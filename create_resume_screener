@@ -1,0 +1,134 @@
+/*
+# Smart Resume Screener — initial schema (single-tenant, no auth)
+
+1. Purpose
+   This is a single-tenant recruiter tool with no sign-in screen. The frontend
+   talks to Supabase with the anon key, so every policy grants both `anon` and
+   `authenticated` roles. Data is intentionally shared/public within the project.
+
+2. New Tables
+   - `jobs`
+     - `id` (uuid, PK)
+     - `title` (text, not null) — job title
+     - `description` (text, not null) — full job description
+     - `required_skills` (text[]) — skills the recruiter marked as required
+     - `min_experience_years` (int, default 0) — minimum experience filter
+     - `created_at` (timestamptz)
+   - `candidates`
+     - `id` (uuid, PK)
+     - `job_id` (uuid, FK -> jobs.id ON DELETE CASCADE)
+     - `name` (text, not null)
+     - `email` (text)
+     - `phone` (text)
+     - `file_name` (text, not null) — original uploaded PDF name
+     - `raw_text` (text) — extracted resume text
+     - `skills` (text[])
+     - `education` (jsonb) — array of {degree, institution, year}
+     - `experience` (jsonb) — array of {role, company, duration, summary}
+     - `projects` (jsonb) — array of {name, description, technologies}
+     - `certifications` (text[])
+     - `match_score` (numeric(3,2)) — final 1-10 score
+     - `skills_match_pct` (int) — 0-100
+     - `experience_match_pct` (int)
+     - `education_match_pct` (int)
+     - `project_match_pct` (int)
+     - `semantic_match_pct` (int)
+     - `matching_skills` (text[])
+     - `missing_skills` (text[])
+     - `strengths` (text[])
+     - `experience_match_text` (text) — short qualitative note
+     - `education_match_text` (text)
+     - `recommendation` (text) — SHORTLIST | REVIEW | REJECT
+     - `justification` (text) — AI-style explanation
+     - `status` (text) — processing | ready | error
+     - `error_message` (text)
+     - `created_at` (timestamptz)
+
+3. Security
+   - RLS enabled on both tables.
+   - Four CRUD policies each (select/insert/update/delete) for `anon, authenticated`
+     with `USING (true)` / `WITH CHECK (true)` — appropriate because this is a
+     single-tenant shared tool with no sign-in.
+
+4. Notes
+   - `candidates.match_score` is numeric(3,2) so it stores values like 8.98.
+   - JSONB columns default to '[]'::jsonb so empty arrays are valid.
+*/
+
+CREATE TABLE IF NOT EXISTS jobs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  title text NOT NULL,
+  description text NOT NULL,
+  required_skills text[] NOT NULL DEFAULT '{}',
+  min_experience_years int NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS candidates (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  email text,
+  phone text,
+  file_name text NOT NULL,
+  raw_text text,
+  skills text[] NOT NULL DEFAULT '{}',
+  education jsonb NOT NULL DEFAULT '[]'::jsonb,
+  experience jsonb NOT NULL DEFAULT '[]'::jsonb,
+  projects jsonb NOT NULL DEFAULT '[]'::jsonb,
+  certifications text[] NOT NULL DEFAULT '{}',
+  match_score numeric(3,2) NOT NULL DEFAULT 0,
+  skills_match_pct int NOT NULL DEFAULT 0,
+  experience_match_pct int NOT NULL DEFAULT 0,
+  education_match_pct int NOT NULL DEFAULT 0,
+  project_match_pct int NOT NULL DEFAULT 0,
+  semantic_match_pct int NOT NULL DEFAULT 0,
+  matching_skills text[] NOT NULL DEFAULT '{}',
+  missing_skills text[] NOT NULL DEFAULT '{}',
+  strengths text[] NOT NULL DEFAULT '{}',
+  experience_match_text text,
+  education_match_text text,
+  recommendation text NOT NULL DEFAULT 'REVIEW',
+  justification text,
+  status text NOT NULL DEFAULT 'processing',
+  error_message text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS candidates_job_id_idx ON candidates(job_id);
+CREATE INDEX IF NOT EXISTS candidates_score_idx ON candidates(match_score DESC);
+
+ALTER TABLE jobs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE candidates ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "anon_select_jobs" ON jobs;
+CREATE POLICY "anon_select_jobs" ON jobs FOR SELECT
+  TO anon, authenticated USING (true);
+
+DROP POLICY IF EXISTS "anon_insert_jobs" ON jobs;
+CREATE POLICY "anon_insert_jobs" ON jobs FOR INSERT
+  TO anon, authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "anon_update_jobs" ON jobs;
+CREATE POLICY "anon_update_jobs" ON jobs FOR UPDATE
+  TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "anon_delete_jobs" ON jobs;
+CREATE POLICY "anon_delete_jobs" ON jobs FOR DELETE
+  TO anon, authenticated USING (true);
+
+DROP POLICY IF EXISTS "anon_select_candidates" ON candidates;
+CREATE POLICY "anon_select_candidates" ON candidates FOR SELECT
+  TO anon, authenticated USING (true);
+
+DROP POLICY IF EXISTS "anon_insert_candidates" ON candidates;
+CREATE POLICY "anon_insert_candidates" ON candidates FOR INSERT
+  TO anon, authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "anon_update_candidates" ON candidates;
+CREATE POLICY "anon_update_candidates" ON candidates FOR UPDATE
+  TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "anon_delete_candidates" ON candidates;
+CREATE POLICY "anon_delete_candidates" ON candidates FOR DELETE
+  TO anon, authenticated USING (true);
